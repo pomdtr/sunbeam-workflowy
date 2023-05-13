@@ -1,6 +1,6 @@
 import { WorkFlowy } from "https://deno.land/x/workflowy/mod.ts";
 import * as sunbeam from "https://deno.land/x/sunbeam/index.d.ts";
-import TurndownService from "npm:turndown";
+import { convert } from "npm:html-to-text";
 
 const login = Deno.env.get("WORKFLOWY_LOGIN");
 const password = Deno.env.get("WORKFLOWY_PASSWORD");
@@ -12,14 +12,13 @@ if (!login || !password) {
 }
 
 const workflowy = new WorkFlowy(login, password);
-const turndownService = new TurndownService();
 
 const document = await workflowy.getDocument();
 
 const items = document.root.items.map(
   (item) =>
     ({
-      title: turndownService.turndown(item.name),
+      title: convert(item.name),
       actions: [
         {
           type: "open",
