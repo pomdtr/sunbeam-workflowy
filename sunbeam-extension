@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+
+sunbeam require deno
+
+DIRNAME=$(dirname "$0")
+deno run -A "$DIRNAME/main.ts" "$@"
