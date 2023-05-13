@@ -46,25 +46,27 @@ const client = new Client(login, password);
 const document = await getDocument(client);
 
 const rootList = root ? document.getList(root) : document.root;
-const items = rootList.items.map(
-  (item) =>
-    ({
-      title: convert(item.name),
-      actions: [
-        {
-          type: "push",
-          page: {
-            command: [entrypoint, item.id],
-          },
-        },
-        {
-          type: "open",
-          title: "Open in Browser",
-          target: `https://workflowy.com/#/${item.id}`,
-        },
-      ],
-    } as sunbeam.Listitem)
-);
+const items = rootList.items.map((list) => {
+  const actions = [] as sunbeam.Action[];
+  if (list.items.length > 0) {
+    actions.push({
+      type: "push",
+      page: {
+        command: [entrypoint, list.id],
+      },
+    });
+  }
+  actions.push({
+    type: "open",
+    title: "Open in Browser",
+    target: `https://workflowy.com/#/${list.id}`,
+  });
+
+  return {
+    title: convert(list.name),
+    actions,
+  } as sunbeam.Listitem;
+});
 
 const list = {
   type: "list",
