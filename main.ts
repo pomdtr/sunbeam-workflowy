@@ -77,6 +77,7 @@ function listItems(rootList: List) {
 
     return {
       title: convert(node.name),
+      accessories: node.items.length > 0 ? [">"] : undefined,
       actions,
     } as sunbeam.Listitem;
   });
