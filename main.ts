@@ -1,12 +1,15 @@
 import { Client } from "https://deno.land/x/workflowy@2.0.0/src/client.ts";
-import { Document } from "https://deno.land/x/workflowy@2.0.0/src/document.ts";
+import {
+  Document,
+  List,
+} from "https://deno.land/x/workflowy@2.0.0/src/document.ts";
 import * as sunbeam from "https://deno.land/x/sunbeam@v0.9.26/index.d.ts";
 import { join } from "https://deno.land/std/path/mod.ts";
 import { convert } from "npm:html-to-text";
 
 const dataKey = "workflowy";
 
-const dirname = new URL(".", import.meta.url).pathname;
+const dirname = new URL(".", Deno.mainModule).pathname;
 const entrypoint = join(dirname, "sunbeam-extension");
 
 const login = Deno.env.get("WORKFLOWY_LOGIN");
@@ -18,11 +21,8 @@ if (!login || !password) {
   Deno.exit(1);
 }
 
-const root = Deno.args.length > 0 ? Deno.args[0] : undefined;
-
-const getDocument = async (client: Client) => {
-  const wfData = localStorage.getItem(dataKey);
-  if (!wfData) {
+const getDocument = (client: Client) => {
+  const fetchDocument = async () => {
     const treeData = await client.getTreeData();
     const initializationData = await client.getInitializationData();
 
@@ -31,47 +31,86 @@ const getDocument = async (client: Client) => {
       JSON.stringify({
         treeData,
         initializationData,
-        expirationTime: Date.now() + 1000 * 60 * 60 * 5,
+        expirationTime: Date.now() + 1000 * 60 * 5, // 5 minutes
       })
     );
 
     return new Document(client, treeData, initializationData);
+  };
+
+  const wfData = localStorage.getItem(dataKey);
+  if (!wfData) {
+    return fetchDocument();
   }
 
   const data = JSON.parse(wfData);
+  if (data.expirationTime < Date.now()) {
+    return fetchDocument();
+  }
+
   return new Document(client, data.treeData, data.initializationData);
 };
+
+function listItems(rootList: List) {
+  const items = rootList.items.map((node) => {
+    const actions = [] as sunbeam.Action[];
+    if (node.items.length > 0) {
+      actions.push({
+        type: "push",
+        page: {
+          command: [entrypoint, "list", node.id],
+        },
+      });
+    }
+    actions.push(
+      {
+        type: "open",
+        title: "Open in Browser",
+        target: `https://workflowy.com/#/${node.id}`,
+      },
+      {
+        type: "run",
+        reloadOnSuccess: true,
+        command: [entrypoint, "remove", node.id],
+      }
+    );
+
+    return {
+      title: convert(node.name),
+      actions,
+    } as sunbeam.Listitem;
+  });
+
+  return {
+    type: "list",
+    title: "Workflowy",
+    items,
+  } as sunbeam.List;
+}
 
 const client = new Client(login, password);
 const document = await getDocument(client);
 
-const rootList = root ? document.getList(root) : document.root;
-const items = rootList.items.map((list) => {
-  const actions = [] as sunbeam.Action[];
-  if (list.items.length > 0) {
-    actions.push({
-      type: "push",
-      page: {
-        command: [entrypoint, list.id],
-      },
-    });
+const command = Deno.args[0];
+
+switch (command) {
+  case undefined:
+  case "list": {
+    const parentID = Deno.args[1];
+    const parent = parentID ? document.getList(parentID) : document.root;
+    const page = listItems(parent);
+    console.log(JSON.stringify(page));
+    break;
   }
-  actions.push({
-    type: "open",
-    title: "Open in Browser",
-    target: `https://workflowy.com/#/${list.id}`,
-  });
-
-  return {
-    title: convert(list.name),
-    actions,
-  } as sunbeam.Listitem;
-});
-
-const list = {
-  type: "list",
-  title: "Workflowy",
-  items,
-} as sunbeam.List;
-
-console.log(JSON.stringify(list));
+  case "remove": {
+    const nodeID = Deno.args[0];
+    const node = document.getList(nodeID);
+    node.delete();
+    localStorage.removeItem(dataKey);
+    break;
+  }
+  default: {
+    console.error(`Unknown command: ${command}`);
+    Deno.exit(1);
+  }
+}
